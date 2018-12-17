@@ -1,102 +1,151 @@
 package sdp
 
+import (
+	"fmt"
+	"net/url"
+	"strconv"
+)
+
 // SessionDescription is a a well-defined format for conveying sufficient
 // information to discover and participate in a multimedia session.
 type SessionDescription struct {
-	// ProtocolVersion gives the version of the Session Description Protocol
+	// v=0
 	// https://tools.ietf.org/html/rfc4566#section-5.1
-	ProtocolVersion int
+	Version Version
 
-	// Origin gives the originator of the session in the form of
 	// o=<username> <sess-id> <sess-version> <nettype> <addrtype> <unicast-address>
 	// https://tools.ietf.org/html/rfc4566#section-5.2
-	Origin string
+	Origin Origin
 
-	// SessionName is the textual session name. There MUST be one and only one
-	// only one "s=" field per session description
+	// s=<session name>
 	// https://tools.ietf.org/html/rfc4566#section-5.3
-	SessionName string
+	SessionName SessionName
 
-	// SessionInformation field provides textual information about the session.  There
-	// MUST be at most one session-level SessionInformation field per session description,
-	// and at most one SessionInformation field per media
+	// i=<session description>
 	// https://tools.ietf.org/html/rfc4566#section-5.4
-	SessionInformation string
+	SessionInformation *Information
 
-	// URI is a pointer to additional information about the
-	// session.  This field is OPTIONAL, but if it is present it MUST be
-	// specified before the first media field.  No more than one URI field
-	// is allowed per session description.
+	// u=<uri>
 	// https://tools.ietf.org/html/rfc4566#section-5.5
-	URI string
+	URI *url.URL
 
-	// EmailAddress specifies the email for the person responsible for the conference
+	// e=<email-address>
 	// https://tools.ietf.org/html/rfc4566#section-5.6
-	EmailAddress string
+	EmailAddress *EmailAddress
 
-	// PhoneNumber specifies the phone number for the person responsible for the conference
+	// p=<phone-number>
 	// https://tools.ietf.org/html/rfc4566#section-5.6
-	PhoneNumber string
+	PhoneNumber *PhoneNumber
 
-	// ConnectionData a session description MUST contain either at least one ConnectionData field in
-	// each media description or a single ConnectionData field at the session level.
+	// c=<nettype> <addrtype> <connection-address>
 	// https://tools.ietf.org/html/rfc4566#section-5.7
-	ConnectionData string
+	ConnectionInformation *ConnectionInformation
 
-	// Bandwidth field denotes the proposed bandwidth to be used by the
-	// session or media
 	// b=<bwtype>:<bandwidth>
 	// https://tools.ietf.org/html/rfc4566#section-5.8
-	Bandwidth []string
+	Bandwidth []Bandwidth
 
-	// Timing lines specify the start and stop times for a session.
-	// t=<start-time> <stop-time>
 	// https://tools.ietf.org/html/rfc4566#section-5.9
-	Timing []string
-
-	// RepeatTimes specify repeat times for a session
-	// r=<repeat interval> <active duration> <offsets from start-time>
 	// https://tools.ietf.org/html/rfc4566#section-5.10
-	RepeatTimes []string
+	TimeDescriptions []TimeDescription
 
-	// TimeZones schedule a repeated session that spans a change from daylight
-	// z=<adjustment time> <offset> <adjustment time> <offset>
+	// z=<adjustment time> <offset> <adjustment time> <offset> ...
 	// https://tools.ietf.org/html/rfc4566#section-5.11
-	TimeZones []string
+	TimeZones []TimeZone
 
-	// EncryptionKeys if for when the SessionDescription is transported over a secure and trusted channel,
-	// the Session Description Protocol MAY be used to convey encryption keys
-	// https://tools.ietf.org/html/rfc4566#section-5.11
-	EncryptionKeys []string
-
-	// Attributes are the primary means for extending SDP.  Attributes may
-	// be defined to be used as "session-level" attributes, "media-level"
-	// attributes, or both.
+	// k=<method>
+	// k=<method>:<encryption key>
 	// https://tools.ietf.org/html/rfc4566#section-5.12
-	Attributes []string
+	EncryptionKey *EncryptionKey
 
-	// MediaDescriptions A session description may contain a number of media descriptions.
-	// Each media description starts with an "m=" field and is terminated by
-	// either the next "m=" field or by the end of the session description.
+	// a=<attribute>
+	// a=<attribute>:<value>
 	// https://tools.ietf.org/html/rfc4566#section-5.13
+	Attributes []Attribute
+
+	// https://tools.ietf.org/html/rfc4566#section-5.14
 	MediaDescriptions []*MediaDescription
 }
 
-// Reset cleans the SessionDescription, and sets all fields back to their default values
-func (s *SessionDescription) Reset() {
-	s.ProtocolVersion = 0
-	s.Origin = ""
-	s.SessionName = ""
-	s.SessionInformation = ""
-	s.URI = ""
-	s.EmailAddress = ""
-	s.PhoneNumber = ""
-	s.ConnectionData = ""
-	s.Bandwidth = nil
-	s.Timing = nil
-	s.RepeatTimes = nil
-	s.TimeZones = nil
-	s.EncryptionKeys = nil
-	s.Attributes = nil
-	s.MediaDescriptions = nil
+// Attribute returns the value of an attribute and if it exists
+func (s *SessionDescription) Attribute(key string) (string, bool) {
+	for _, a := range s.Attributes {
+		if a.Key == key {
+			return a.Value, true
+		}
+	}
+	return "", false
+}
+
+// Version describes the value provided by the "v=" field which gives
+// the version of the Session Description Protocol.
+type Version int
+
+func (v *Version) String() *string {
+	output := strconv.Itoa(int(*v))
+	return &output
+}
+
+// Origin defines the structure for the "o=" field which provides the
+// originator of the session plus a session identifier and version number.
+type Origin struct {
+	Username       string
+	SessionID      uint64
+	SessionVersion uint64
+	NetworkType    string
+	AddressType    string
+	UnicastAddress string
+}
+
+func (o *Origin) String() *string {
+	output := fmt.Sprintf(
+		"%v %d %d %v %v %v",
+		o.Username,
+		o.SessionID,
+		o.SessionVersion,
+		o.NetworkType,
+		o.AddressType,
+		o.UnicastAddress,
+	)
+	return &output
+}
+
+// SessionName describes a structured representations for the "s=" field
+// and is the textual session name.
+type SessionName string
+
+func (s *SessionName) String() *string {
+	output := string(*s)
+	return &output
+}
+
+// EmailAddress describes a structured representations for the "e=" line
+// which specifies email contact information for the person responsible for
+// the conference.
+type EmailAddress string
+
+func (e *EmailAddress) String() *string {
+	output := string(*e)
+	return &output
+}
+
+// PhoneNumber describes a structured representations for the "p=" line
+// specify phone contact information for the person responsible for the
+// conference.
+type PhoneNumber string
+
+func (p *PhoneNumber) String() *string {
+	output := string(*p)
+	return &output
+}
+
+// TimeZone defines the structured object for "z=" line which describes
+// repeated sessions scheduling.
+type TimeZone struct {
+	AdjustmentTime uint64
+	Offset         int64
+}
+
+func (z *TimeZone) String() string {
+	return strconv.FormatUint(z.AdjustmentTime, 10) + " " + strconv.FormatInt(z.Offset, 10)
 }

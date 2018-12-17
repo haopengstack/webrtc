@@ -1,70 +1,117 @@
 package sdp
 
-import "strconv"
+import (
+	"strings"
+)
 
-func kvBuilder(key, value string) string {
-	return key + "=" + value + "\n"
-}
-
-// Marshal creates a raw string from a SessionDescription
-// Some lines in each description are REQUIRED and some are OPTIONAL,
-// but all MUST appear in exactly the order given here (the fixed order
-// greatly enhances error detection and allows for a simple parser).
-// OPTIONAL items are marked with a "*".
-// v=  (protocol version)
-// o=  (originator and session identifier)
-// s=  (session name)
-// i=* (session information)
-// u=* (URI of description)
-// e=* (email address)
-// p=* (phone number)
-// c=* (connection information -- not required if included in all media)
-// b=* (zero or more bandwidth information lines)
-// t=* (One or more time descriptions)
-// r=* (One or more repeat descriptions)
-// z=* (time zone adjustments)
-// k=* (encryption key)
-// a=* (zero or more session attribute lines)
-// Zero or more media descriptions
+// Marshal takes a SDP struct to text
 // https://tools.ietf.org/html/rfc4566#section-5
+// Session description
+//    v=  (protocol version)
+//    o=  (originator and session identifier)
+//    s=  (session name)
+//    i=* (session information)
+//    u=* (URI of description)
+//    e=* (email address)
+//    p=* (phone number)
+//    c=* (connection information -- not required if included in
+//         all media)
+//    b=* (zero or more bandwidth information lines)
+//    One or more time descriptions ("t=" and "r=" lines; see below)
+//    z=* (time zone adjustments)
+//    k=* (encryption key)
+//    a=* (zero or more session attribute lines)
+//    Zero or more media descriptions
+//
+// Time description
+//    t=  (time the session is active)
+//    r=* (zero or more repeat times)
+//
+// Media description, if present
+//    m=  (media name and transport address)
+//    i=* (media title)
+//    c=* (connection information -- optional if included at
+//         session level)
+//    b=* (zero or more bandwidth information lines)
+//    k=* (encryption key)
+//    a=* (zero or more media attribute lines)
 func (s *SessionDescription) Marshal() (raw string) {
-	addIfSet := func(key, value string) {
-		if value != "" {
-			raw += kvBuilder(key, value)
-		}
-	}
-	addSlice := func(key string, values []string) {
-		for _, v := range values {
-			raw += kvBuilder(key, v)
-		}
+	raw += keyValueBuild("v=", s.Version.String())
+	raw += keyValueBuild("o=", s.Origin.String())
+	raw += keyValueBuild("s=", s.SessionName.String())
+
+	if s.SessionInformation != nil {
+		raw += keyValueBuild("i=", s.SessionInformation.String())
 	}
 
-	raw += kvBuilder("v", strconv.Itoa(s.ProtocolVersion))
-	raw += kvBuilder("o", s.Origin)
-	raw += kvBuilder("s", s.SessionName)
+	if s.URI != nil {
+		uri := s.URI.String()
+		raw += keyValueBuild("u=", &uri)
+	}
 
-	addIfSet("i", s.SessionInformation)
-	addIfSet("u", s.URI)
-	addIfSet("e", s.EmailAddress)
-	addIfSet("p", s.PhoneNumber)
-	addIfSet("c", s.ConnectionData)
+	if s.EmailAddress != nil {
+		raw += keyValueBuild("e=", s.EmailAddress.String())
+	}
 
-	addSlice("b", s.Bandwidth)
-	addSlice("t", s.Timing)
-	addSlice("r", s.RepeatTimes)
-	addSlice("z", s.TimeZones)
-	addSlice("k", s.EncryptionKeys)
-	addSlice("a", s.Attributes)
+	if s.PhoneNumber != nil {
+		raw += keyValueBuild("p=", s.PhoneNumber.String())
+	}
 
-	for _, a := range s.MediaDescriptions {
-		raw += kvBuilder("m", a.MediaName)
+	if s.ConnectionInformation != nil {
+		raw += keyValueBuild("c=", s.ConnectionInformation.String())
+	}
 
-		addIfSet("i", a.MediaInformation)
-		addIfSet("c", a.ConnectionData)
+	for _, b := range s.Bandwidth {
+		raw += keyValueBuild("b=", b.String())
+	}
 
-		addSlice("b", a.Bandwidth)
-		addSlice("k", a.EncryptionKeys)
-		addSlice("a", a.Attributes)
+	for _, td := range s.TimeDescriptions {
+		raw += keyValueBuild("t=", td.Timing.String())
+		for _, r := range td.RepeatTimes {
+			raw += keyValueBuild("r=", r.String())
+		}
+	}
+
+	rawTimeZones := make([]string, 0)
+	for _, z := range s.TimeZones {
+		rawTimeZones = append(rawTimeZones, z.String())
+	}
+
+	if len(rawTimeZones) > 0 {
+		timeZones := strings.Join(rawTimeZones, " ")
+		raw += keyValueBuild("z=", &timeZones)
+	}
+
+	if s.EncryptionKey != nil {
+		raw += keyValueBuild("k=", s.EncryptionKey.String())
+	}
+
+	for _, a := range s.Attributes {
+		raw += keyValueBuild("a=", a.String())
+	}
+
+	for _, md := range s.MediaDescriptions {
+		raw += keyValueBuild("m=", md.MediaName.String())
+
+		if md.MediaTitle != nil {
+			raw += keyValueBuild("i=", md.MediaTitle.String())
+		}
+
+		if md.ConnectionInformation != nil {
+			raw += keyValueBuild("c=", md.ConnectionInformation.String())
+		}
+
+		for _, b := range md.Bandwidth {
+			raw += keyValueBuild("b=", b.String())
+		}
+
+		if md.EncryptionKey != nil {
+			raw += keyValueBuild("k=", md.EncryptionKey.String())
+		}
+
+		for _, a := range md.Attributes {
+			raw += keyValueBuild("a=", a.String())
+		}
 	}
 
 	return raw

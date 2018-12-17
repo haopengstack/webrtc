@@ -2,6 +2,7 @@ package rtp
 
 import (
 	"encoding/binary"
+	"fmt"
 
 	"github.com/pkg/errors"
 )
@@ -47,6 +48,21 @@ const (
 	csrcLength      = 4
 )
 
+// String helps with debugging by printing packet information in a readable way
+func (p Packet) String() string {
+	out := "RTP PACKET:\n"
+
+	out += fmt.Sprintf("\tVersion: %v\n", p.Version)
+	out += fmt.Sprintf("\tMarker: %v\n", p.Marker)
+	out += fmt.Sprintf("\tPayload Type: %d\n", p.PayloadType)
+	out += fmt.Sprintf("\tSequence Number: %d\n", p.SequenceNumber)
+	out += fmt.Sprintf("\tTimestamp: %d\n", p.Timestamp)
+	out += fmt.Sprintf("\tSSRC: %d (%x)\n", p.SSRC, p.SSRC)
+	out += fmt.Sprintf("\tPayload Length: %d\n", len(p.Payload))
+
+	return out
+}
+
 // Unmarshal parses the passed byte slice and stores the result in the Packet this method is called upon
 func (p *Packet) Unmarshal(rawPacket []byte) error {
 	if len(rawPacket) < headerLength {
@@ -87,7 +103,7 @@ func (p *Packet) Unmarshal(rawPacket []byte) error {
 
 	for i := range p.CSRC {
 		offset := csrcOffset + (i * csrcLength)
-		p.CSRC[i] = binary.BigEndian.Uint32(rawPacket[offset:offset])
+		p.CSRC[i] = binary.BigEndian.Uint32(rawPacket[offset:])
 	}
 
 	if p.Extension {
@@ -123,7 +139,11 @@ func (p *Packet) Marshal() ([]byte, error) {
 	 * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 	 */
 
-	rawPacket := make([]byte, 12+(len(p.CSRC)*csrcLength)+(4+len(p.ExtensionPayload)))
+	rawPacketLength := 12 + (len(p.CSRC) * csrcLength)
+	if p.Extension {
+		rawPacketLength += 4 + len(p.ExtensionPayload)
+	}
+	rawPacket := make([]byte, rawPacketLength)
 
 	rawPacket[0] |= p.Version << versionShift
 	if p.Padding {
@@ -151,7 +171,7 @@ func (p *Packet) Marshal() ([]byte, error) {
 
 	for i := range p.CSRC {
 		offset := csrcOffset + (i * csrcLength)
-		p.CSRC[i] = binary.BigEndian.Uint32(rawPacket[offset:offset])
+		p.CSRC[i] = binary.BigEndian.Uint32(rawPacket[offset:])
 	}
 
 	if p.Extension {
@@ -162,7 +182,10 @@ func (p *Packet) Marshal() ([]byte, error) {
 		copy(rawPacket[currOffset:], p.ExtensionPayload)
 	}
 
+	p.PayloadOffset = csrcOffset + (len(p.CSRC) * csrcLength)
+
 	rawPacket = append(rawPacket, p.Payload...)
+	p.Raw = rawPacket
 
 	return rawPacket, nil
 }

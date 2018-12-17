@@ -1,43 +1,86 @@
 package sdp
 
-// MediaDescription represents a media type.  Currently defined media are "audio",
-// "video", "text", "application", and "message", although this list
-// may be extended in the future
+import (
+	"strconv"
+	"strings"
+)
+
+// MediaDescription represents a media type.
 // https://tools.ietf.org/html/rfc4566#section-5.14
 type MediaDescription struct {
-	// MediaName is m=<media> <port> <proto> <fmt>
-	// <media> is the media type
-	// <port> is the transport port to which the media stream is sent
-	// <proto> is the transport protocol
-	// <fmt> is a media format description
-	// https://tools.ietf.org/html/rfc4566#section-5.13
-	MediaName string
+	// m=<media> <port>/<number of ports> <proto> <fmt> ...
+	// https://tools.ietf.org/html/rfc4566#section-5.14
+	MediaName MediaName
 
-	// SessionInformation field provides textual information about the session.  There
-	// MUST be at most one session-level SessionInformation field per session description,
-	// and at most one SessionInformation field per media
+	// i=<session description>
 	// https://tools.ietf.org/html/rfc4566#section-5.4
-	MediaInformation string
+	MediaTitle *Information
 
-	// ConnectionData a session description MUST contain either at least one ConnectionData field in
-	// each media description or a single ConnectionData field at the session level.
+	// c=<nettype> <addrtype> <connection-address>
 	// https://tools.ietf.org/html/rfc4566#section-5.7
-	ConnectionData string
+	ConnectionInformation *ConnectionInformation
 
-	// Bandwidth field denotes the proposed bandwidth to be used by the
-	// session or media
 	// b=<bwtype>:<bandwidth>
 	// https://tools.ietf.org/html/rfc4566#section-5.8
-	Bandwidth []string
+	Bandwidth []Bandwidth
 
-	// EncryptionKeys if for when the SessionDescription is transported over a secure and trusted channel,
-	// the Session Description Protocol MAY be used to convey encryption keys
-	// https://tools.ietf.org/html/rfc4566#section-5.11
-	EncryptionKeys []string
-
-	// Attributes are the primary means for extending SDP.  Attributes may
-	// be defined to be used as "session-level" attributes, "media-level"
-	// attributes, or both.
+	// k=<method>
+	// k=<method>:<encryption key>
 	// https://tools.ietf.org/html/rfc4566#section-5.12
-	Attributes []string
+	EncryptionKey *EncryptionKey
+
+	// a=<attribute>
+	// a=<attribute>:<value>
+	// https://tools.ietf.org/html/rfc4566#section-5.13
+	Attributes []Attribute
+}
+
+// Attribute returns the value of an attribute and if it exists
+func (s *MediaDescription) Attribute(key string) (string, bool) {
+	for _, a := range s.Attributes {
+		if a.Key == key {
+			return a.Value, true
+		}
+	}
+	return "", false
+}
+
+// RangedPort supports special format for the media field "m=" port value. If
+// it may be necessary to specify multiple transport ports, the protocol allows
+// to write it as: <port>/<number of ports> where number of ports is a an
+// offsetting range.
+type RangedPort struct {
+	Value int
+	Range *int
+}
+
+func (p *RangedPort) String() string {
+	output := strconv.Itoa(p.Value)
+	if p.Range != nil {
+		output += "/" + strconv.Itoa(*p.Range)
+	}
+	return output
+}
+
+// MediaName describes the "m=" field storage structure.
+type MediaName struct {
+	Media   string
+	Port    RangedPort
+	Protos  []string
+	Formats []int
+}
+
+func (m *MediaName) String() *string {
+	formats := make([]string, 0)
+	for _, format := range m.Formats {
+		formats = append(formats, strconv.Itoa(format))
+	}
+
+	output := strings.Join([]string{
+		m.Media,
+		m.Port.String(),
+		strings.Join(m.Protos, "/"),
+		strings.Join(formats, " "),
+	}, " ")
+	return &output
 }

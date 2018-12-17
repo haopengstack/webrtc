@@ -2,6 +2,60 @@ package codecs
 
 import "github.com/pions/webrtc/pkg/rtp"
 
+// VP8Payloader payloads VP8 packets
+type VP8Payloader struct{}
+
+const (
+	vp8HeaderSize = 1
+)
+
+// Payload fragments a VP8 packet across one or more byte arrays
+func (p *VP8Payloader) Payload(mtu int, payload []byte) [][]byte {
+
+	/*
+	 * https://tools.ietf.org/html/rfc7741#section-4.2
+	 *
+	 *       0 1 2 3 4 5 6 7
+	 *      +-+-+-+-+-+-+-+-+
+	 *      |X|R|N|S|R| PID | (REQUIRED)
+	 *      +-+-+-+-+-+-+-+-+
+	 * X:   |I|L|T|K| RSV   | (OPTIONAL)
+	 *      +-+-+-+-+-+-+-+-+
+	 * I:   |M| PictureID   | (OPTIONAL)
+	 *      +-+-+-+-+-+-+-+-+
+	 * L:   |   TL0PICIDX   | (OPTIONAL)
+	 *      +-+-+-+-+-+-+-+-+
+	 * T/K: |TID|Y| KEYIDX  | (OPTIONAL)
+	 *      +-+-+-+-+-+-+-+-+
+	 *  S: Start of VP8 partition.  SHOULD be set to 1 when the first payload
+	 *     octet of the RTP packet is the beginning of a new VP8 partition,
+	 *     and MUST NOT be 1 otherwise.  The S bit MUST be set to 1 for the
+	 *     first packet of each encoded frame.
+	 */
+
+	maxFragmentSize := mtu - vp8HeaderSize
+
+	payloadData := payload
+	payloadDataRemaining := len(payload)
+	payloadDataIndex := 0
+	var payloads [][]byte
+	for payloadDataRemaining > 0 {
+		currentFragmentSize := min(maxFragmentSize, payloadDataRemaining)
+		out := make([]byte, vp8HeaderSize+currentFragmentSize)
+		if payloadDataRemaining == len(payload) {
+			out[0] = 0x10
+		}
+
+		copy(out[vp8HeaderSize:], payloadData[payloadDataIndex:payloadDataIndex+currentFragmentSize])
+		payloads = append(payloads, out)
+
+		payloadDataRemaining -= currentFragmentSize
+		payloadDataIndex += currentFragmentSize
+	}
+
+	return payloads
+}
+
 // VP8Packet represents the VP8 header that is stored in the payload of an RTP Packet
 type VP8Packet struct {
 	// Required Header
@@ -22,7 +76,7 @@ type VP8Packet struct {
 }
 
 // Unmarshal parses the passed byte slice and stores the result in the VP8Packet this method is called upon
-func (p *VP8Packet) Unmarshal(packet *rtp.Packet) error {
+func (p *VP8Packet) Unmarshal(packet *rtp.Packet) ([]byte, error) {
 	payload := packet.Payload
 
 	payloadIndex := 0
@@ -59,6 +113,5 @@ func (p *VP8Packet) Unmarshal(packet *rtp.Packet) error {
 	}
 
 	p.Payload = payload[payloadIndex:]
-
-	return nil
+	return p.Payload, nil
 }

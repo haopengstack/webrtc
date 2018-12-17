@@ -1,66 +1,84 @@
 package main
 
 import (
-	"bufio"
-	"encoding/base64"
 	"fmt"
-	"os"
-	"sync/atomic"
+	"time"
 
 	"github.com/pions/webrtc"
-	"github.com/pions/webrtc/pkg/rtp"
+	"github.com/pions/webrtc/examples/util"
+	"github.com/pions/webrtc/pkg/ice"
+	"github.com/pions/webrtc/pkg/media/ivfwriter"
+	"github.com/pions/webrtc/pkg/rtcp"
 )
 
-var trackCount uint64
-
 func main() {
-	reader := bufio.NewReader(os.Stdin)
+	// Everything below is the pion-WebRTC API! Thanks for using it ❤️.
 
-	fmt.Print("Browser base64 Session Description: ")
-	rawSd, err := reader.ReadString('\n')
-	if err != nil {
-		panic(err)
+	// Setup the codecs you want to use.
+	// We'll use a VP8 codec but you can also define your own
+	webrtc.RegisterCodec(webrtc.NewRTCRtpOpusCodec(webrtc.DefaultPayloadTypeOpus, 48000, 2))
+	webrtc.RegisterCodec(webrtc.NewRTCRtpVP8Codec(webrtc.DefaultPayloadTypeVP8, 90000))
+
+	// Prepare the configuration
+	config := webrtc.RTCConfiguration{
+		IceServers: []webrtc.RTCIceServer{
+			{
+				URLs: []string{"stun:stun.l.google.com:19302"},
+			},
+		},
 	}
-	fmt.Println("\nGolang base64 Session Description: ")
-
-	sd, err := base64.StdEncoding.DecodeString(rawSd)
-	if err != nil {
-		panic(err)
-	}
-
-	/* Everything below is the pion-WebRTC API, thanks for using it! */
 
 	// Create a new RTCPeerConnection
-	peerConnection := &webrtc.RTCPeerConnection{}
+	peerConnection, err := webrtc.New(config)
+	util.Check(err)
 
 	// Set a handler for when a new remote track starts, this handler saves buffers to disk as
 	// an ivf file, since we could have multiple video tracks we provide a counter.
 	// In your application this is where you would handle/process video
-	peerConnection.Ontrack = func(mediaType webrtc.TrackType, packets <-chan *rtp.Packet) {
-		track := atomic.AddUint64(&trackCount, 1)
-		fmt.Printf("Track %d has started \n", track)
+	peerConnection.OnTrack(func(track *webrtc.RTCTrack) {
+		// Send a PLI on an interval so that the publisher is pushing a keyframe every rtcpPLIInterval
+		// This is a temporary fix until we implement incoming RTCP events, then we would push a PLI only when a viewer requests it
+		go func() {
+			ticker := time.NewTicker(time.Second * 3)
+			for range ticker.C {
+				err := peerConnection.SendRTCP(&rtcp.PictureLossIndication{MediaSSRC: track.Ssrc})
+				if err != nil {
+					fmt.Println(err)
+				}
+			}
+		}()
 
-		i, err := newIVFWriter(fmt.Sprintf("output-%d.ivf", track))
-		if err != nil {
-			panic(err)
+		if track.Codec.Name == webrtc.VP8 {
+			fmt.Println("Got VP8 track, saving to disk as output.ivf")
+			i, err := ivfwriter.New("output.ivf")
+			util.Check(err)
+			for {
+				err = i.AddPacket(<-track.Packets)
+				util.Check(err)
+			}
 		}
-		for {
-			i.addPacket(<-packets)
-		}
-	}
+	})
+
+	// Set the handler for ICE connection state
+	// This will notify you when the peer has connected/disconnected
+	peerConnection.OnICEConnectionStateChange(func(connectionState ice.ConnectionState) {
+		fmt.Printf("Connection State has changed %s \n", connectionState.String())
+	})
+
+	// Wait for the offer to be pasted
+	offer := util.Decode(util.MustReadStdin())
 
 	// Set the remote SessionDescription
-	if err := peerConnection.SetRemoteDescription(string(sd)); err != nil {
-		panic(err)
-	}
+	err = peerConnection.SetRemoteDescription(offer)
+	util.Check(err)
 
 	// Sets the LocalDescription, and starts our UDP listeners
-	if err := peerConnection.CreateOffer(); err != nil {
-		panic(err)
-	}
+	answer, err := peerConnection.CreateAnswer(nil)
+	util.Check(err)
 
-	// Get the LocalDescription and take it to base64 so we can paste in browser
-	localDescriptionStr := peerConnection.LocalDescription.Marshal()
-	fmt.Println(base64.StdEncoding.EncodeToString([]byte(localDescriptionStr)))
+	// Output the answer in base64 so we can paste it in browser
+	fmt.Println(util.Encode(answer))
+
+	// Block forever
 	select {}
 }

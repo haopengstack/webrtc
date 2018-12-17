@@ -1,5 +1,5 @@
 # gstreamer-receive
-gstreamer-receive is a simple application that shows how to record your webcam using pion-WebRTC and play live using GStreamer.
+gstreamer-receive is a simple application that shows how to receive media using pion-WebRTC and play live using GStreamer.
 
 ## Instructions
 ### Install GStreamer
@@ -14,15 +14,20 @@ go get github.com/pions/webrtc/examples/gstreamer-receive
 ```
 
 ### Open gstreamer-receive example page
-[jsfiddle.net](https://jsfiddle.net/tr2uq31e/1/) you should see your Webcam, two text-areas and a 'Start Session' button
+[jsfiddle.net](https://jsfiddle.net/usd3xmtz/110/) you should see your Webcam, two text-areas and a 'Start Session' button
 
-### Run gstreamer-receive, input browser's SessionDescription
-In the jsfiddle the top textarea is your browsers, copy that and paste into `gstreamer-receive` and press enter
+### Run gstreamer-receive with your browsers SessionDescription as stdin
+In the jsfiddle the top textarea is your browser, copy that and:
+#### Linux/macOS
+Run `echo $BROWSER_SDP | gstreamer-receive`
+#### Windows
+1. Paste the SessionDescription into a file.
+1. Run `gstreamer-receive < my_file`
 
 ### Input gstreamer-receive's SessionDescription into your browser
 Copy the text that `gstreamer-receive` just emitted and copy into second text area
 
-### Hit 'Start Session' in jsfiddle, enjoy your video!
-Your video should popup automatically, and will continue playing until you close the application.
+### Hit 'Start Session' in jsfiddle, enjoy your media!
+Your video and/or audio should popup automatically, and will continue playing until you close the application.
 
 Congrats, you have used pion-WebRTC! Now start building something cool
